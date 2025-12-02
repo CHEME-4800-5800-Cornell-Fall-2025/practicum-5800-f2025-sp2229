@@ -1,3 +1,4 @@
+[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/LbdSOFva)
 # Practicum Problem 4/5800 Fall 2025
 In this practicum problem, you will write code to construct, train and test a Classical Hopfield Network (CHN) for the purpose of storing and recalling (uncorrelated) binary images. See `L15a` and `L15c` lecture notes for more details on the classical and modern Hopfield networks.
 
