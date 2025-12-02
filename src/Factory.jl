@@ -1,1 +1,56 @@
-throw(ErrorException("Oppps! No methods defined in src/Factory.jl. What should you do here?"))
+#throw(ErrorException("Oppps! No methods defined in src/Factory.jl. What should you do here?"))
+# -- PUBLIC METHODS BELOW HERE ---------------------------------------------------------------------------------------- #
+"""
+    build(modeltype::Type{MyClassicalHopfieldNetworkModel}, data::NamedTuple) -> MyClassicalHopfieldNetworkModel
+
+Factory method for building a Hopfield network model. 
+
+### Arguments
+- `modeltype::Type{MyClassicalHopfieldNetworkModel}`: the type of the model to be built.
+- `data::NamedTuple`: a named tuple containing the data for the model.
+
+The named tuple should contain the following fields:
+- `memories`: a matrix of memories (each column is a memory).
+
+### Returns
+- `model::MyClassicalHopfieldNetworkModel`: the built Hopfield network model with the following fields populated:
+    - `W`: the weight matrix.
+    - `b`: the bias vector.
+    - `energy`: a dictionary of energies for each memory.
+"""
+function build(modeltype::Type{MyClassicalHopfieldNetworkModel}, data::NamedTuple)::MyClassicalHopfieldNetworkModel
+
+    # initialize -
+    model = modeltype();
+    linearimagecollection = data.memories;
+    number_of_rows, number_of_cols = size(linearimagecollection);
+    W = zeros(Float32, number_of_rows, number_of_rows);
+    b = zeros(Float32, number_of_rows); # zero bias for classical Hopfield
+
+    # compute the W -
+    for j ∈ 1:number_of_cols
+        Y = ⊗(linearimagecollection[:,j], linearimagecollection[:,j]); # compute the outer product -
+        W += Y; # update the W -
+    end
+    
+    # no self-coupling and Hebbian scaling -
+    for i ∈ 1:number_of_rows
+        W[i,i] = 0.0f0; # no self-coupling in a classical Hopfield network
+    end
+    WN = (1/number_of_cols)*W; # Hebbian scaling by number of memories stored
+    
+    # compute the energy dictionary -
+    energy = Dict{Int64, Float32}();
+    for i ∈ 1:number_of_cols
+        energy[i] = _energy(linearimagecollection[:,i], WN, b);
+    end
+
+    # add data to the model -
+    model.W = WN;
+    model.b = b;
+    model.energy = energy;
+
+    # return -
+    return model;
+end
+# --- PUBLIC METHODS ABOVE HERE --------------------------------------------------------------------------------------- #
