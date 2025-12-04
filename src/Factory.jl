@@ -1,4 +1,16 @@
-#throw(ErrorException("Oppps! No methods defined in src/Factory.jl. What should you do here?"))
+
+# Simple factory helper for creating a classical Hopfield network model.
+# This file provides a single public function `build(...)` that takes a
+# named tuple containing memory vectors (each column is a memory) and
+# builds a `MyClassicalHopfieldNetworkModel` instance.
+#
+# 1. Initialize weight matrix `W` and bias vector `b`.
+# 2. For each memory vector, compute the outer product (Hebbian rule)
+#    and add it to `W`.
+# 3. Remove self-connections by zeroing the diagonal entries of `W`.
+# 4. Apply Hebbian scaling by dividing by the number of memories.
+# 5. Compute and store the energy of each stored memory (using `_energy`).
+# 6. Populate and return the model instance.
 # -- PUBLIC METHODS BELOW HERE ---------------------------------------------------------------------------------------- #
 """
     build(modeltype::Type{MyClassicalHopfieldNetworkModel}, data::NamedTuple) -> MyClassicalHopfieldNetworkModel
@@ -29,19 +41,24 @@ function build(modeltype::Type{MyClassicalHopfieldNetworkModel}, data::NamedTupl
     b = zeros(Float32, number_of_rows); # zero bias for classical Hopfield
 
     # compute the weight matrix W -
+    # For each memory vector (column j) compute the outer product
+    # s * s^T and add it to W. This is the Hebbian outer-product rule.
     for j ∈ 1:number_of_cols # for each image memory
         Y = ⊗(linearimagecollection[:,j], linearimagecollection[:,j]); # compute the outer product -
-        W += Y; # update the W -
+        W += Y; # accumulate into the weight matrix
     end
     
     # no self-coupling and Hebbian scaling -
+    # Remove self-connections: set diagonal to zero
     for i ∈ 1:number_of_rows
         W[i,i] = 0.0f0; # no self-coupling in a classical Hopfield network
     end
+    # Scale by number of memories (average the outer products)
     WN = (1/number_of_cols)*W; # Hebbian scaling by number of memories stored
     
     # compute the energy dictionary -
     energy = Dict{Int64, Float32}();
+    # Compute the energy for each stored memory using the network weights
     for i ∈ 1:number_of_cols
         energy[i] = _energy(linearimagecollection[:,i], WN, b);
     end

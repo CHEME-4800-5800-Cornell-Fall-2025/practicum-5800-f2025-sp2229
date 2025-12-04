@@ -1,24 +1,40 @@
-#throw(ErrorException("Oppps! No methods defined in src/Compute.jl. What should you do here?"))
-"""
-    _energy(W::Array{T,2}, α::Array{T,1}, s::Array{T,1}) -> T where T <: Number
-"""
 
+# Utility functions for running the Hopfield network simulation:
+# - `_energy(...)` computes the scalar energy of a network state
+#   according to the classical Hopfield energy function.
+# - `⊗(...)` computes an outer product (used when building weights).
+# - `recover(...)` runs the asynchronous update rule until convergence
+#   (or max iterations) and records visited states and energies.
+
+"""
+    _energy(s::Array{<:Number,1}, W::Array{<:Number,2}, b::Array{<:Number,1}) -> Float32
+
+Compute the Hopfield network energy for state `s` with weights `W`
+and bias `b` using the standard energy function:
+
+    E(s) = -1/2 * sum_{ij} W[i,j] s[i] s[j] - sum_i b[i] s[i]
+
+The function returns a Float32 energy value.
+"""
 function _energy(s::Array{<: Number,1}, W::Array{<:Number,2}, b::Array{<:Number,1})::Float32
-    
-    # initialize -
+    # Accumulate the pairwise term sum_{ij} W[i,j] s[i] s[j]
     tmp_energy_state = 0.0;
     number_of_states = length(s);
 
-    # main loop -
-    tmp = transpose(b)*s; # alias for the bias term
+    # bias contribution: b^T * s (scalar)
+    tmp = transpose(b)*s;
+
+    # double loop over pairs to compute the quadratic term
     for i ∈ 1:number_of_states
         for j ∈ 1:number_of_states
             tmp_energy_state += W[i,j]*s[i]*s[j];
         end
     end
+
+    # Combine terms: note the -1/2 factor on the pairwise sum
     energy_state = -(1/2)*tmp_energy_state + tmp;
 
-    # return -
+    # return energy (Float32)
     return energy_state;
 end
 
@@ -35,21 +51,21 @@ Compute the outer product of two vectors `a` and `b` and returns a matrix.
 - `Y::Array{Float64,2}`: a matrix of size `m x n` such that `Y[i,j] = a[i]*b[j]`.
 """
 function ⊗(a::Array{T,1}, b::Array{T,1})::Array{T,2} where T <: Number
-# computes the current similarity vector that is the transpose of the current state and memori i 
-# computing the outer product gives the current similarity vector z
-    # initialize -
+    # Outer product helper: returns matrix Y where Y[i,j] = a[i] * b[j].
+    # This is used when building the Hebbian weight matrix as s * s^T.
+
+    # dimensions
     m = length(a)
     n = length(b)
     Y = zeros(m,n)
 
-    # main loop 
+    # compute the outer product explicitly (keeps types simple and clear)
     for i ∈ 1:m
         for j ∈ 1:n
-            Y[i,j] = a[i]*b[j] # a is memory, b is bias, computes the outer product for similarity 
+            Y[i,j] = a[i]*b[j]
         end
     end
 
-    # return 
     return Y
 end
 
@@ -78,47 +94,58 @@ function recover(model::MyClassicalHopfieldNetworkModel, sₒ::Array{Int32,1}, t
     maxiterations::Int = 1000, patience::Union{Int,Nothing} = nothing,
     miniterations_before_convergence::Union{Int,Nothing} = nothing)::Tuple{Dict{Int64, Array{Int32,1}}, Dict{Int64, Float32}}
 
-    # initialize -
-    W = model.W; # get the weights
-    b = model.b; # get the biases
-    number_of_pixels = length(sₒ); # number of pixels
-    patience_val = isnothing(patience) ? max(5, Int(round(0.1 * number_of_pixels))) : patience; # scale patience with problem size
-    # set the minimum iterations before convergence
-    min_iterations = max(isnothing(miniterations_before_convergence) ? patience_val : miniterations_before_convergence, patience_val); # floor before declaring convergence
-    S = CircularBuffer{Array{Int32,1}}(patience_val); # buffer to check for convergence
-    
-    # initialize -
-    frames = Dict{Int64, Array{Int32,1}}(); # dictionary to hold frames
-    energydictionary = Dict{Int64, Float32}(); # dictionary to hold energies
+    # initialize - extract network parameters and prepare bookkeeping
+    W = model.W; # weights matrix (N x N)
+    b = model.b; # bias vector (length N)
+    number_of_pixels = length(sₒ); # number of neurons/pixels
+
+    # Determine patience: how many identical consecutive states required
+    # before we declare convergence. Default scales with problem size.
+    patience_val = isnothing(patience) ? max(5, Int(round(0.1 * number_of_pixels))) : patience;
+
+    # Minimum iterations to perform before checking for convergence
+    min_iterations = max(isnothing(miniterations_before_convergence) ? patience_val : miniterations_before_convergence, patience_val);
+
+    # Circular buffer to hold the last `patience_val` states for stability checks
+    S = CircularBuffer{Array{Int32,1}}(patience_val);
+
+    # Storage for frames (states) and their energies recorded during the run
+    frames = Dict{Int64, Array{Int32,1}}();
+    energydictionary = Dict{Int64, Float32}();
     has_converged = false; # convergence flag
 
-    # setup -
-    frames[0] = copy(sₒ); # copy the initial random state
-    energydictionary[0] = _energy(sₒ,W, b); # initial energy
-    s = copy(sₒ); # initial state
+    # Record initial state and its energy
+    frames[0] = copy(sₒ);
+    energydictionary[0] = _energy(sₒ,W, b);
+    s = copy(sₒ); # working copy of the state vector
     iteration_counter = 1;
     while (has_converged == false)
         # classical hopfield models have guaranteed convergence 
-        j = rand(1:number_of_pixels); # select a random pixel
-        w = W[j,:]; # get the weights
-        h = dot(w,s) - b[j]; # state at node j
-        
-        # Edge case: if h == 0, we have a tie, so we randomly assign ±1
+        # Asynchronous update: pick a random neuron j and update its spin
+        j = rand(1:number_of_pixels);
+        w = W[j,:]; # weights connecting neuron j to all others
+        h = dot(w,s) - b[j]; # local field at neuron j
+
+        # Apply sign activation: if local field is zero, break the tie randomly
         if h == 0
-            s[j] = rand() < 0.5 ? Int32(-1) : Int32(1); # random tie-break to avoid bias
+            s[j] = rand() < 0.5 ? Int32(-1) : Int32(1);
         else
-            s[j] = h > 0 ? Int32(1) : Int32(-1); # map sign to ±1 spins
+            s[j] = h > 0 ? Int32(1) : Int32(-1);
         end
 
+        # Record energy after the update and snapshot the state
         energydictionary[iteration_counter] = _energy(s, W, b);
-        state_snapshot = copy(s); # single snapshot reused for storage and convergence checks
+        state_snapshot = copy(s);
         frames[iteration_counter] = state_snapshot;
         
         # check for convergence -
-        push!(S, state_snapshot); # push the current state to the buffer
+        # Push the new state into the circular buffer and check stability
+        push!(S, state_snapshot);
         if (length(S) == patience_val) && (iteration_counter >= min_iterations)
+            # If all stored states in the buffer are identical (Hamming distance 0)
+            # we consider the network to have converged to a stable attractor.
             all_equal = true;
-            first_state = S[1]; # look at the oldest state in the buffer
+            first_state = S[1];
             for state ∈ S
                 if (hamming(first_state, state) != 0)
                     all_equal = false;
@@ -126,14 +153,16 @@ function recover(model::MyClassicalHopfieldNetworkModel, sₒ::Array{Int32,1}, t
                 end
             end
             if (all_equal == true)
-                has_converged = true; # we have converged
+                has_converged = true;
             end
         end
         
-        # is energy below the true value?
+        # If the current energy is less than or equal to the true (target) energy,
+        # we can stop early: the network has reached a configuration as good as
+        # the stored memory's energy (or better).
         current_energy = energydictionary[iteration_counter];
         if (current_energy ≤ trueenergyvalue)
-            has_converged = true; # stop
+            has_converged = true;
             @info "Energy value lower than true. Stopping"
         end
 
