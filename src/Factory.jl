@@ -21,14 +21,15 @@ The named tuple should contain the following fields:
 function build(modeltype::Type{MyClassicalHopfieldNetworkModel}, data::NamedTuple)::MyClassicalHopfieldNetworkModel
 
     # initialize -
+    #user provides a set of memory vectors
     model = modeltype();
-    linearimagecollection = data.memories;
+    linearimagecollection = data.memories; #load the memories into the linearimagecollection
     number_of_rows, number_of_cols = size(linearimagecollection);
-    W = zeros(Float32, number_of_rows, number_of_rows);
+    W = zeros(Float32, number_of_rows, number_of_rows); #set initial partial memory weight matrix to zero 
     b = zeros(Float32, number_of_rows); # zero bias for classical Hopfield
 
-    # compute the W -
-    for j ∈ 1:number_of_cols
+    # compute the weight matrix W -
+    for j ∈ 1:number_of_cols # for each image memory
         Y = ⊗(linearimagecollection[:,j], linearimagecollection[:,j]); # compute the outer product -
         W += Y; # update the W -
     end

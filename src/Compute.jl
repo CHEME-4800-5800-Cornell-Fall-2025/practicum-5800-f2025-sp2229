@@ -2,6 +2,7 @@
 """
     _energy(W::Array{T,2}, α::Array{T,1}, s::Array{T,1}) -> T where T <: Number
 """
+
 function _energy(s::Array{<: Number,1}, W::Array{<:Number,2}, b::Array{<:Number,1})::Float32
     
     # initialize -
@@ -34,7 +35,8 @@ Compute the outer product of two vectors `a` and `b` and returns a matrix.
 - `Y::Array{Float64,2}`: a matrix of size `m x n` such that `Y[i,j] = a[i]*b[j]`.
 """
 function ⊗(a::Array{T,1}, b::Array{T,1})::Array{T,2} where T <: Number
-
+# computes the current similarity vector that is the transpose of the current state and memori i 
+# computing the outer product gives the current similarity vector z
     # initialize -
     m = length(a)
     n = length(b)
@@ -43,7 +45,7 @@ function ⊗(a::Array{T,1}, b::Array{T,1})::Array{T,2} where T <: Number
     # main loop 
     for i ∈ 1:m
         for j ∈ 1:n
-            Y[i,j] = a[i]*b[j]
+            Y[i,j] = a[i]*b[j] # a is memory, b is bias, computes the outer product for similarity 
         end
     end
 
@@ -81,6 +83,7 @@ function recover(model::MyClassicalHopfieldNetworkModel, sₒ::Array{Int32,1}, t
     b = model.b; # get the biases
     number_of_pixels = length(sₒ); # number of pixels
     patience_val = isnothing(patience) ? max(5, Int(round(0.1 * number_of_pixels))) : patience; # scale patience with problem size
+    # set the minimum iterations before convergence
     min_iterations = max(isnothing(miniterations_before_convergence) ? patience_val : miniterations_before_convergence, patience_val); # floor before declaring convergence
     S = CircularBuffer{Array{Int32,1}}(patience_val); # buffer to check for convergence
     
@@ -95,7 +98,7 @@ function recover(model::MyClassicalHopfieldNetworkModel, sₒ::Array{Int32,1}, t
     s = copy(sₒ); # initial state
     iteration_counter = 1;
     while (has_converged == false)
-        
+        # classical hopfield models have guaranteed convergence 
         j = rand(1:number_of_pixels); # select a random pixel
         w = W[j,:]; # get the weights
         h = dot(w,s) - b[j]; # state at node j
